@@ -778,13 +778,13 @@ const restaurants = {
     title:"Drink 1+1",
     desc:"Order two drinks of your choice, and you will get the cheaper or the equally priced one for free.",
     save:"Save up to 284 Kč",
-    renewalDays:7
+    renewalDays:0
    },
    {
     title:"Drink -50%",
     desc:"Order one drink of your choice, and you will get a 50% discount on it.",
     save:"Save up to 142 Kč",
-    renewalDays:7
+    renewalDays:0
    }
   ]
  },
@@ -808,13 +808,13 @@ const restaurants = {
     title:"Large Bowl 1+1",
     desc:"Order two bowls of your choice, and you will get the cheaper or the equally priced one for free (applies only to large 500 g bowls).",
     save:"Save up to 289 Kč",
-    renewalDays:14
+    renewalDays:0
    },
    {
     title:"Discount 30%",
     desc:"You will get 30% discount on the entire bill.",
     save:"Save up to 999 Kč",
-    renewalDays:14
+    renewalDays:0
    }
   ]
  }
@@ -1067,10 +1067,6 @@ function renderMyDeals(){
   const d=r?.deals[item.dealIndex];
   if(!r||!d)return "";
   const id=JSON.stringify(item.id);
-  const renewalDays=getRenewalDays(d);
-  const daysLeft=item.redeemedAt
-   ?Math.max(0,Math.ceil((renewalDays*86400000-(Date.now()-item.redeemedAt))/86400000))
-   :renewalDays;
 
   return `
   <article class="deal-card">
