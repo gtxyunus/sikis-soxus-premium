@@ -1552,7 +1552,7 @@ renderRestaurants();
  <div class="flex items-center justify-between"><h2 id="accountTitle" class="text-2xl font-black">Account</h2><button id="accountClose" type="button" class="rounded-full bg-gray-100 px-4 py-2">Close</button></div>
  <p id="accountStatus" class="my-3 text-sm" role="status"></p>
  <section id="locationGate" class="space-y-3" hidden>
-  <p>To browse Sikis Sokus, allow live location sharing. While this app is visible, Supabase stores your latest precise coordinates, accuracy, and recording time for the site admin to see. If the admin opens a reading in Google Maps, Google receives those coordinates. Updates are sent at most every 10 seconds when a fresh reading is available.</p>
+  <p>To browse Sikis Sokus, allow live location sharing. While this app is visible, Supabase stores your latest precise coordinates, accuracy, and recording time for the site admin to see. If the admin opens a reading in Google Maps, Google receives those coordinates. Updates are sent at most every 10 seconds when a fresh reading is available. On this device, sharing resumes when you return to the signed-in app. You can stop it in Account.</p>
   <button type="button" id="startLocation" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Share live location</button>
   <button type="button" id="locationSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button>
  </section>
@@ -1598,6 +1598,17 @@ renderRestaurants();
  let lastUpload = 0;
  let uploadInProgress = false;
  let lastPositionTime = 0;
+ function rememberLocationChoice(user, approved) {
+  try {
+   const key = 'sikis_location_approval:' + user.id;
+   if (approved) localStorage.setItem(key, 'yes');
+   else localStorage.removeItem(key);
+  } catch { /* Sharing stays available for this launch. */ }
+ }
+ function hasSavedLocationApproval(user) {
+  try { return localStorage.getItem('sikis_location_approval:' + user.id) === 'yes'; }
+  catch { return false; }
+ }
  function pauseLocation(clearApproval = false) {
   if (locationWatch !== null) navigator.geolocation.clearWatch(locationWatch);
   clearInterval(locationTimer);
@@ -1621,6 +1632,7 @@ renderRestaurants();
    if (error) throw error;
    if (watch !== locationWatch || userId !== activeUser?.id || document.hidden) return;
    if (!locationSaved) {
+    rememberLocationChoice(activeUser, true);
     locationSaved = true;
     status('');
     renderAccount();
@@ -1644,6 +1656,7 @@ renderRestaurants();
    pendingPosition = position;
    void uploadLocation();
   }, error => {
+   if (error.code === 1 && activeUser) rememberLocationChoice(activeUser, false);
    pauseLocation(true);
    renderAccount();
    status(error.code === 1 ? 'Location access was denied. Allow it in browser settings, then try again.' : 'Location is unavailable. Try again.');
@@ -1703,6 +1716,7 @@ renderRestaurants();
  function showUser(user) {
   if (activeUser?.id !== user?.id) {
    pauseLocation(true);
+   locationApproved = Boolean(user && hasSavedLocationApproval(user));
    lastUpload = 0;
    history.replaceChildren();
    history.hidden = true;
@@ -1712,12 +1726,14 @@ renderRestaurants();
   }
   activeUser = user;
   renderAccount();
+  if (locationApproved) startLocation();
   status(user && !isAppLocked() ? 'Signed in as ' + (user.user_metadata?.display_name || user.email) : '');
  }
  function unlockAccount(user) {
   showUser(user);
   unlockedUserId = user.id;
   renderAccount();
+  if (locationApproved) startLocation();
  }
  function lockHomeScreenApp() {
   if (!homeScreenApp || !supportsPasskeys || ceremonyInProgress || !activeUser || passkeyPreference(activeUser) !== 'enabled') return;
@@ -1756,7 +1772,7 @@ renderRestaurants();
  void ready.then(tryAutomaticPasskey);
  byId('startLocation').onclick = startLocation;
  byId('locationSignOut').onclick = () => byId('accountSignOut').click();
- byId('stopLocation').onclick = () => { pauseLocation(true); renderAccount(); status('Live location sharing stopped.'); };
+ byId('stopLocation').onclick = () => { if (activeUser) rememberLocationChoice(activeUser, false); pauseLocation(true); renderAccount(); status('Live location sharing stopped.'); };
  byId('passkeyManage').onclick = () => {
   showSetup = true;
   status('');
@@ -1767,6 +1783,7 @@ renderRestaurants();
   if (passkeyPreference(activeUser) !== 'enabled') savePasskeyPreference(activeUser, 'skipped');
   showSetup = false;
   renderAccount();
+  if (locationApproved) startLocation();
  };
  byId('passkeyEnroll').onclick = async () => {
   if (ceremonyInProgress || !activeUser) return;
@@ -1781,6 +1798,7 @@ renderRestaurants();
    showSetup = false;
    renderAccount();
    status('Passkey saved.');
+   if (locationApproved) startLocation();
   } catch (error) { status(error.message || 'Could not add a passkey.'); }
   finally { ceremonyInProgress = false; }
  };
@@ -1791,6 +1809,35 @@ renderRestaurants();
  }
  byId('cancelAutoPasskey').onclick = () => autoPasskeyController?.abort();
  byId('passkeySignIn').onclick = () => void signInWithPasskey(false);
+ function preferredPasskeyKey(user) {
+  return 'sikis_last_passkey:' + user.id;
+ }
+ async function requestPasskey(automatic, signal) {
+  const passkeys = client.auth.passkey;
+  if (typeof passkeys?.startAuthentication !== 'function' || typeof passkeys.verifyAuthentication !== 'function' ||
+   typeof PublicKeyCredential.parseRequestOptionsFromJSON !== 'function' || typeof PublicKeyCredential.prototype.toJSON !== 'function') {
+   return client.auth.signInWithPasskey({options:{signal}});
+  }
+  let preferredId = null;
+  if (automatic && activeUser) {
+   try { preferredId = localStorage.getItem(preferredPasskeyKey(activeUser)); } catch { /* Storage may be disabled. */ }
+  }
+  const {data:challenge,error} = await passkeys.startAuthentication();
+  if (error) throw error;
+  signal?.throwIfAborted();
+  const options = challenge.options.publicKey || challenge.options;
+  const request = PublicKeyCredential.parseRequestOptionsFromJSON({
+   ...options,
+   ...(preferredId ? {allowCredentials:[{id:preferredId,type:'public-key'}]} : {})
+  });
+  const assertion = await navigator.credentials.get({publicKey:request,signal});
+  if (!assertion) throw new Error('No passkey was selected.');
+  const result = await passkeys.verifyAuthentication({challenge_id:challenge.challenge_id,credential:assertion.toJSON()});
+  if (!result.error && result.data?.user) {
+   try { localStorage.setItem(preferredPasskeyKey(result.data.user), assertion.id); } catch { /* Storage may be disabled. */ }
+  }
+  return result;
+ }
  async function signInWithPasskey(automatic) {
   if (ceremonyInProgress) return;
   ceremonyInProgress = true;
@@ -1799,7 +1846,7 @@ renderRestaurants();
    autoPasskeyRunning = automatic;
    autoPasskeyController = automatic ? new AbortController() : null;
    renderAccount();
-   const {data,error} = await client.auth.signInWithPasskey(autoPasskeyController ? {options:{signal:autoPasskeyController.signal}} : undefined);
+   const {data,error} = await requestPasskey(automatic, autoPasskeyController?.signal);
    if (error) throw error;
    if (!data.user) throw new Error('Passkey sign-in did not return an account.');
    savePasskeyPreference(data.user, 'enabled');
