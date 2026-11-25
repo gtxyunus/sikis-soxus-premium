@@ -1548,9 +1548,15 @@ function completeRedemption(){
 
 renderRestaurants();
 </script>
+ <button type="button" id="stopLocation" class="fixed left-3 top-[max(12px,env(safe-area-inset-top))] z-[100] rounded-full bg-gray-900 px-4 py-2 text-sm font-bold text-white" hidden>Live location is on · Stop</button>
 <dialog id="accountDialog" closedby="none" class="m-auto w-[min(94%,45rem)] max-h-[85dvh] overflow-auto rounded-3xl p-6 shadow-2xl backdrop:bg-black/50" aria-labelledby="accountTitle">
  <div class="flex items-center justify-between"><h2 id="accountTitle" class="text-2xl font-black">Account</h2><button id="accountClose" type="button" class="rounded-full bg-gray-100 px-4 py-2">Close</button></div>
  <p id="accountStatus" class="my-3 text-sm" role="status"></p>
+ <section id="locationGate" class="space-y-3" hidden>
+  <p>To browse Sikis Sokus, allow live location sharing. While this app is visible, Supabase stores your latest precise coordinates, accuracy, and recording time for the site admin to see. Updates are sent at most every 10 seconds when a fresh reading is available.</p>
+  <button type="button" id="startLocation" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Share live location</button>
+  <button type="button" id="locationSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button>
+ </section>
  <section id="passkeySetup" class="space-y-3" hidden>
   <p>Unlock Sikis Sokus with Face ID or your device’s screen lock when you reopen the Home Screen app.</p>
   <button id="passkeyEnroll" type="button" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Set up Face ID or passkey</button>
@@ -1581,6 +1587,66 @@ renderRestaurants();
  let unlockedUserId = null;
  let ceremonyInProgress = false;
  let showSetup = false;
+ let locationWatch = null;
+ let locationTimer = null;
+ let locationSaved = false;
+ let locationApproved = false;
+ let pendingPosition = null;
+ let lastUpload = 0;
+ let uploadInProgress = false;
+ let lastPositionTime = 0;
+ function pauseLocation(clearApproval = false) {
+  if (locationWatch !== null) navigator.geolocation.clearWatch(locationWatch);
+  clearInterval(locationTimer);
+  locationWatch = null;
+  locationTimer = null;
+  locationSaved = false;
+  pendingPosition = null;
+  if (clearApproval) locationApproved = false;
+ }
+ async function uploadLocation() {
+  if (!activeUser || !locationApproved || document.hidden || !pendingPosition || uploadInProgress || Date.now() - lastUpload < 10000) return;
+  const position = pendingPosition;
+  pendingPosition = null;
+  const userId = activeUser.id;
+  const watch = locationWatch;
+  lastUpload = Date.now();
+  uploadInProgress = true;
+  try {
+   const {latitude, longitude, accuracy} = position.coords;
+   const {error} = await client.rpc('sikis_update_live_location', {lat:latitude, lon:longitude, meters:accuracy, recorded_at:new Date(position.timestamp).toISOString()});
+   if (error) throw error;
+   if (watch !== locationWatch || userId !== activeUser?.id || document.hidden) return;
+   if (!locationSaved) {
+    locationSaved = true;
+    status('');
+    renderAccount();
+   }
+  } catch {
+   if (watch !== locationWatch || userId !== activeUser?.id) return;
+   pauseLocation(true);
+   renderAccount();
+   status('Could not save location. Try sharing again.');
+  } finally { uploadInProgress = false; }
+ }
+ function startLocation() {
+  if (!activeUser || unlockedUserId !== activeUser.id || showSetup || document.hidden || locationWatch !== null) return;
+  if (!navigator.geolocation) { status('Location is unavailable in this browser.'); return; }
+  locationApproved = true;
+  lastPositionTime = 0;
+  status('Waiting for your location…');
+  locationWatch = navigator.geolocation.watchPosition(position => {
+   if (!locationApproved || document.hidden || locationWatch === null || position.timestamp <= lastPositionTime) return;
+   lastPositionTime = position.timestamp;
+   pendingPosition = position;
+   void uploadLocation();
+  }, error => {
+   pauseLocation(true);
+   renderAccount();
+   status(error.code === 1 ? 'Location access was denied. Allow it in browser settings, then try again.' : 'Location is unavailable. Try again.');
+  }, {enableHighAccuracy:true,maximumAge:0,timeout:15000});
+  locationTimer = setInterval(uploadLocation, 1000);
+ }
  const devicePreferences = new Map();
  const supportsPasskeys = Boolean(window.PublicKeyCredential && navigator.credentials &&
   typeof client?.auth.registerPasskey === 'function' && typeof client.auth.signInWithPasskey === 'function');
@@ -1595,7 +1661,7 @@ renderRestaurants();
   try { localStorage.setItem(preferenceKey(user), preference); } catch { /* Continue for this launch. */ }
  }
  function isAppLocked() {
-  return !activeUser || unlockedUserId !== activeUser.id || showSetup;
+  return !activeUser || unlockedUserId !== activeUser.id || showSetup || !locationSaved;
  }
  const history = byId('accountHistory');
  const title = byId('accountTitle');
@@ -1604,14 +1670,18 @@ renderRestaurants();
  function renderAccount() {
   const locked = isAppLocked();
   const needsUnlock = Boolean(activeUser && unlockedUserId !== activeUser.id);
+  const needsLocation = Boolean(activeUser && !needsUnlock && !showSetup && !locationSaved);
   const wasLocked = document.body.classList.contains('account-locked');
   document.body.classList.toggle('account-locked', locked);
   byId('accountClose').hidden = locked;
   dialog.setAttribute('closedby', locked ? 'none' : 'closerequest');
+  byId('locationGate').hidden = !needsLocation;
+  byId('stopLocation').hidden = !locationSaved || !activeUser;
+  if (needsLocation) byId('stopLocation').hidden = true;
   byId('passkeySetup').hidden = !showSetup;
-  byId('passkeySignIn').hidden = !supportsPasskeys || !locked || showSetup || registering;
+  byId('passkeySignIn').hidden = !supportsPasskeys || !locked || showSetup || needsLocation || registering;
   byId('passkeySignIn').textContent = needsUnlock ? 'Unlock with Face ID or passkey' : 'Sign in with Face ID or passkey';
-  form.hidden = showSetup || !locked;
+  form.hidden = showSetup || needsLocation || !locked;
   byId('accountNameRow').hidden = !registering;
   form.displayName.required = registering;
   form.password.minLength = registering ? 8 : 0;
@@ -1622,12 +1692,14 @@ renderRestaurants();
   byId('passkeyManage').hidden = !supportsPasskeys || !activeUser;
   byId('passkeyManage').textContent = activeUser && passkeyPreference(activeUser) === 'enabled' ? 'Add another passkey' : 'Set up Face ID or passkey';
   byId('accountAdmin').hidden = activeUser?.email?.toLowerCase() !== adminEmail;
-  title.textContent = showSetup ? 'Set up Face ID' : registering ? 'Create an account' : needsUnlock ? 'Unlock Sikis Sokus' : 'Account';
+  title.textContent = needsLocation ? 'Live location required' : showSetup ? 'Set up Face ID' : registering ? 'Create an account' : needsUnlock ? 'Unlock Sikis Sokus' : 'Account';
   if (!locked && wasLocked && dialog.open) dialog.close();
   if (locked && !dialog.open && !document.hidden) dialog.showModal();
  }
  function showUser(user) {
   if (activeUser?.id !== user?.id) {
+   pauseLocation(true);
+   lastUpload = 0;
    history.replaceChildren();
    history.hidden = true;
    registering = false;
@@ -1664,10 +1736,20 @@ renderRestaurants();
  let ready = client.auth.getSession().then(({data}) => showUser(data.session?.user || null)).catch(() => showUser(null));
  client.auth.onAuthStateChange((_event, session) => showUser(session?.user || null));
  document.addEventListener('visibilitychange', () => {
-  if (document.hidden) lockHomeScreenApp();
-  else renderAccount();
+  if (document.hidden) {
+   if (locationSaved) pauseLocation();
+   lockHomeScreenApp();
+   renderAccount();
+  } else {
+   renderAccount();
+   if (locationApproved) startLocation();
+  }
  });
- window.addEventListener('pagehide', lockHomeScreenApp);
+ window.addEventListener('pagehide', () => { pauseLocation(); lockHomeScreenApp(); });
+ window.addEventListener('pageshow', () => { renderAccount(); if (locationApproved) startLocation(); });
+ byId('startLocation').onclick = startLocation;
+ byId('locationSignOut').onclick = () => byId('accountSignOut').click();
+ byId('stopLocation').onclick = () => { pauseLocation(true); renderAccount(); status('Live location sharing stopped.'); };
  byId('passkeyManage').onclick = () => {
   showSetup = true;
   status('');
@@ -1706,6 +1788,7 @@ renderRestaurants();
    savePasskeyPreference(data.user, 'enabled');
    showSetup = false;
    unlockAccount(data.user);
+   if (locationApproved) startLocation();
   } catch (error) { status(error.message || 'Could not sign in with a passkey. Use your password to continue.'); }
   finally { ceremonyInProgress = false; }
  };
@@ -1731,12 +1814,21 @@ renderRestaurants();
   const {error} = await client.auth.signOut();
   if (error) status(error.message);
  };
- byId('accountAdmin').onclick = async () => {
+ let historyLoading = false;
+ setInterval(() => {
+  if (dialog.open && !history.hidden && !isAppLocked() && !document.hidden) void loadAdminHistory();
+ }, 10000);
+ byId('accountAdmin').onclick = loadAdminHistory;
+ async function loadAdminHistory() {
+  if (historyLoading || isAppLocked() || activeUser?.email?.toLowerCase() !== adminEmail) return;
+  historyLoading = true;
   const userId = activeUser?.id;
-  history.replaceChildren();
+  if (history.hidden) history.textContent = 'Loading activity…';
   history.hidden = false;
-  history.textContent = 'Loading activity…';
-  const {data,error} = await client.rpc('sikis_admin_history');
+  let data, error;
+  try { ({data,error} = await client.rpc('sikis_admin_history')); }
+  catch (requestError) { error = requestError; }
+  finally { historyLoading = false; }
   if (activeUser?.id !== userId || isAppLocked()) return;
   history.textContent = error ? 'History unavailable. ' + error.message : data.length ? 'Recent activity · Prague time' : 'No activity yet.';
   for (const row of data || []) {
@@ -1745,7 +1837,7 @@ renderRestaurants();
    const heading = document.createElement('strong');
    heading.textContent = (row.display_name || row.email) + ' · ' + row.event;
    card.append(heading);
-   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.last_deal && 'Last demo deal: ' + row.last_deal]) {
+   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.location && 'Location: ' + row.location, row.last_deal && 'Last demo deal: ' + row.last_deal]) {
     if (!value) continue;
     const line = document.createElement('div');
     line.textContent = value;
@@ -1753,7 +1845,7 @@ renderRestaurants();
    }
    history.append(card);
   }
- };
+ }
  window.recordSikisSwipe = async (booking, label) => {
   await ready;
   if (isAppLocked()) { window.openSikisAccount(); status('Sign in to redeem a demo deal.'); return false; }
