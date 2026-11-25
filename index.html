@@ -1619,7 +1619,8 @@ renderRestaurants();
   button.textContent = registering ? 'Create account' : 'Sign in';
   byId('accountMode').textContent = registering ? 'Back to sign in' : 'Create an account';
   byId('accountSession').hidden = locked;
-  byId('passkeyManage').hidden = !supportsPasskeys || !activeUser || passkeyPreference(activeUser) === 'enabled';
+  byId('passkeyManage').hidden = !supportsPasskeys || !activeUser;
+  byId('passkeyManage').textContent = activeUser && passkeyPreference(activeUser) === 'enabled' ? 'Add another passkey' : 'Set up Face ID or passkey';
   byId('accountAdmin').hidden = activeUser?.email?.toLowerCase() !== adminEmail;
   title.textContent = showSetup ? 'Set up Face ID' : registering ? 'Create an account' : needsUnlock ? 'Unlock Sikis Sokus' : 'Account';
   if (!locked && wasLocked && dialog.open) dialog.close();
@@ -1674,7 +1675,7 @@ renderRestaurants();
  };
  byId('passkeySkip').onclick = () => {
   if (ceremonyInProgress || !activeUser) return;
-  savePasskeyPreference(activeUser, 'skipped');
+  if (passkeyPreference(activeUser) !== 'enabled') savePasskeyPreference(activeUser, 'skipped');
   showSetup = false;
   renderAccount();
  };
