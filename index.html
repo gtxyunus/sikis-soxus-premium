@@ -30,7 +30,11 @@ body{
 .slide-up.active{transform:translateY(0)}
 .deal-tab.active{background:linear-gradient(90deg,#fa4548,#ff7132);color:white}
 .deal-tab{transition:.2s}
-.nav-btn.active{color:#f65b23;background:#f1f1f5}
+.glass-nav{position:fixed;z-index:30;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(93%,410px);display:flex;gap:4px;padding:6px;border:1px solid #ffffffc7;border-radius:32px;background:linear-gradient(135deg,#ffffffe3,#f8f6ffe0 48%,#fff2dcac);box-shadow:0 8px 26px #1c1c292b,inset 0 1px 3px #fff;-webkit-backdrop-filter:blur(18px) saturate(145%);backdrop-filter:blur(18px) saturate(145%)}
+.glass-nav .nav-btn{gap:4px;min-height:58px;color:#282634;line-height:1.15}
+.glass-nav .nav-btn.active{color:#b83913;background:#ffffffa6;box-shadow:inset 0 0 0 1px #ffffffcf}
+.glass-nav .nav-icon{width:24px;height:24px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.glass-nav .nav-btn:focus-visible{outline:2px solid #b83913;outline-offset:2px}
 .deal-card{
  background:#fff;border:1px solid #d7dce6;
  border-radius:24px;overflow:hidden;
@@ -635,15 +639,15 @@ Redeemed <span id="redeemedCount">0</span>
 </div>
 
 <!-- BOTTOM NAVIGATION -->
-<nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white/95 border border-gray-200 shadow-xl rounded-full p-1 flex w-[min(92%,390px)]">
+<nav class="glass-nav" aria-label="Main navigation">
 <button id="navAccount" onclick="openSikisAccount()" class="nav-btn flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
-<span class="text-2xl">◉</span>Account
+<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="2.6"/><path d="M6 18a6 6 0 0 1 12 0"/></svg>Account
 </button>
 <button id="navExplore" onclick="showHome()" class="nav-btn active flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
-<span class="text-2xl">◈</span>Explore
+<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.7 8.3-2.3 5.1-5.1 2.3 2.3-5.1z"/></svg>Explore
 </button>
 <button id="navDeals" onclick="showMyDeals()" class="nav-btn flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
-<span class="text-2xl">◇</span>My deals
+<svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.5 11 4h6l3 3v6l-7.5 7.5z"/><circle cx="15.7" cy="8.3" r=".9"/></svg>My deals
 </button>
 </nav>
 
@@ -1721,8 +1725,8 @@ renderRestaurants();
    history.replaceChildren();
    history.hidden = true;
    registering = false;
-   showSetup = Boolean(supportsPasskeys && user?.email_confirmed_at && !passkeyPreference(user));
-   unlockedUserId = user && (!supportsPasskeys || !homeScreenApp || passkeyPreference(user) !== 'enabled') ? user.id : null;
+   unlockedUserId = user && !homeScreenApp ? user.id : null;
+   showSetup = Boolean(unlockedUserId && supportsPasskeys && user.email_confirmed_at && !passkeyPreference(user));
   }
   activeUser = user;
   renderAccount();
@@ -1732,13 +1736,15 @@ renderRestaurants();
  function unlockAccount(user) {
   showUser(user);
   unlockedUserId = user.id;
+  showSetup = Boolean(supportsPasskeys && user.email_confirmed_at && !passkeyPreference(user));
   renderAccount();
   if (locationApproved) startLocation();
  }
  function lockHomeScreenApp() {
-  if (!homeScreenApp || !supportsPasskeys || ceremonyInProgress || !activeUser || passkeyPreference(activeUser) !== 'enabled') return;
+  if (!homeScreenApp || ceremonyInProgress || !activeUser) return;
   if (unlockedUserId !== null) attemptedAutoPasskey = false;
   unlockedUserId = null;
+  showSetup = false;
   history.replaceChildren();
   history.hidden = true;
   status('');
@@ -1809,35 +1815,6 @@ renderRestaurants();
  }
  byId('cancelAutoPasskey').onclick = () => autoPasskeyController?.abort();
  byId('passkeySignIn').onclick = () => void signInWithPasskey(false);
- function preferredPasskeyKey(user) {
-  return 'sikis_last_passkey:' + user.id;
- }
- async function requestPasskey(automatic, signal) {
-  const passkeys = client.auth.passkey;
-  if (typeof passkeys?.startAuthentication !== 'function' || typeof passkeys.verifyAuthentication !== 'function' ||
-   typeof PublicKeyCredential.parseRequestOptionsFromJSON !== 'function' || typeof PublicKeyCredential.prototype.toJSON !== 'function') {
-   return client.auth.signInWithPasskey({options:{signal}});
-  }
-  let preferredId = null;
-  if (automatic && activeUser) {
-   try { preferredId = localStorage.getItem(preferredPasskeyKey(activeUser)); } catch { /* Storage may be disabled. */ }
-  }
-  const {data:challenge,error} = await passkeys.startAuthentication();
-  if (error) throw error;
-  signal?.throwIfAborted();
-  const options = challenge.options.publicKey || challenge.options;
-  const request = PublicKeyCredential.parseRequestOptionsFromJSON({
-   ...options,
-   ...(preferredId ? {allowCredentials:[{id:preferredId,type:'public-key'}]} : {})
-  });
-  const assertion = await navigator.credentials.get({publicKey:request,signal});
-  if (!assertion) throw new Error('No passkey was selected.');
-  const result = await passkeys.verifyAuthentication({challenge_id:challenge.challenge_id,credential:assertion.toJSON()});
-  if (!result.error && result.data?.user) {
-   try { localStorage.setItem(preferredPasskeyKey(result.data.user), assertion.id); } catch { /* Storage may be disabled. */ }
-  }
-  return result;
- }
  async function signInWithPasskey(automatic) {
   if (ceremonyInProgress) return;
   ceremonyInProgress = true;
@@ -1846,7 +1823,7 @@ renderRestaurants();
    autoPasskeyRunning = automatic;
    autoPasskeyController = automatic ? new AbortController() : null;
    renderAccount();
-   const {data,error} = await requestPasskey(automatic, autoPasskeyController?.signal);
+   const {data,error} = await client.auth.signInWithPasskey(autoPasskeyController ? {options:{signal:autoPasskeyController.signal}} : undefined);
    if (error) throw error;
    if (!data.user) throw new Error('Passkey sign-in did not return an account.');
    savePasskeyPreference(data.user, 'enabled');
