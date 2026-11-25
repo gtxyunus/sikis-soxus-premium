@@ -1791,6 +1791,35 @@ renderRestaurants();
  }
  byId('cancelAutoPasskey').onclick = () => autoPasskeyController?.abort();
  byId('passkeySignIn').onclick = () => void signInWithPasskey(false);
+ function preferredPasskeyKey(user) {
+  return 'sikis_last_passkey:' + user.id;
+ }
+ async function requestPasskey(automatic, signal) {
+  const passkeys = client.auth.passkey;
+  if (typeof passkeys?.startAuthentication !== 'function' || typeof passkeys.verifyAuthentication !== 'function' ||
+   typeof PublicKeyCredential.parseRequestOptionsFromJSON !== 'function' || typeof PublicKeyCredential.prototype.toJSON !== 'function') {
+   return client.auth.signInWithPasskey({options:{signal}});
+  }
+  let preferredId = null;
+  if (automatic && activeUser) {
+   try { preferredId = localStorage.getItem(preferredPasskeyKey(activeUser)); } catch { /* Storage may be disabled. */ }
+  }
+  const {data:challenge,error} = await passkeys.startAuthentication();
+  if (error) throw error;
+  signal?.throwIfAborted();
+  const options = challenge.options.publicKey || challenge.options;
+  const request = PublicKeyCredential.parseRequestOptionsFromJSON({
+   ...options,
+   ...(preferredId ? {allowCredentials:[{id:preferredId,type:'public-key'}]} : {})
+  });
+  const assertion = await navigator.credentials.get({publicKey:request,signal});
+  if (!assertion) throw new Error('No passkey was selected.');
+  const result = await passkeys.verifyAuthentication({challenge_id:challenge.challenge_id,credential:assertion.toJSON()});
+  if (!result.error && result.data?.user) {
+   try { localStorage.setItem(preferredPasskeyKey(result.data.user), assertion.id); } catch { /* Storage may be disabled. */ }
+  }
+  return result;
+ }
  async function signInWithPasskey(automatic) {
   if (ceremonyInProgress) return;
   ceremonyInProgress = true;
@@ -1799,7 +1828,7 @@ renderRestaurants();
    autoPasskeyRunning = automatic;
    autoPasskeyController = automatic ? new AbortController() : null;
    renderAccount();
-   const {data,error} = await client.auth.signInWithPasskey(autoPasskeyController ? {options:{signal:autoPasskeyController.signal}} : undefined);
+   const {data,error} = await requestPasskey(automatic, autoPasskeyController?.signal);
    if (error) throw error;
    if (!data.user) throw new Error('Passkey sign-in did not return an account.');
    savePasskeyPreference(data.user, 'enabled');
