@@ -521,10 +521,12 @@ nav.fixed{bottom:max(12px,env(safe-area-inset-bottom))}
   padding: 18px 0 12px;
  }
 }
+body.account-locked > :not(#accountDialog) { visibility: hidden; }
+body.account-locked { overflow: hidden; }
 </style>
 </head>
 
-<body>
+<body class="account-locked">
 
 <!-- HOME -->
 <div id="homeView" class="pb-28">
@@ -1578,13 +1580,19 @@ renderRestaurants();
  function showUser(user) {
   if (activeUser?.id !== user?.id) { history.replaceChildren(); history.hidden = true; }
   activeUser = user;
+  const wasLocked = document.body.classList.contains('account-locked');
+  document.body.classList.toggle('account-locked', !user);
+  byId('accountClose').hidden = !user;
+  if (user && wasLocked && dialog.open) dialog.close();
+  if (!user && !dialog.open) dialog.showModal();
   form.hidden = Boolean(user);
   byId('accountSession').hidden = !user;
   byId('accountAdmin').hidden = user?.email?.toLowerCase() !== adminEmail;
   status(user ? 'Signed in as ' + (user.user_metadata?.display_name || user.email) : '');
  }
  window.openSikisAccount = () => { if (!dialog.open) dialog.showModal(); if (!client) status('Accounts are temporarily unavailable.'); };
- byId('accountClose').onclick = () => dialog.close();
+ byId('accountClose').onclick = () => { if (activeUser) dialog.close(); };
+ dialog.addEventListener('cancel', event => { if (!activeUser) event.preventDefault(); });
  byId('accountMode').onclick = () => {
   registering = !registering;
   title.textContent = registering ? 'Create an account' : 'Account';
@@ -1596,8 +1604,8 @@ renderRestaurants();
   byId('accountMode').textContent = registering ? 'Back to sign in' : 'Create an account';
   status('');
  };
- if (!client) return;
- let ready = client.auth.getSession().then(({data}) => showUser(data.session?.user || null));
+ if (!client) { window.openSikisAccount(); byId('accountClose').hidden = true; return; }
+ let ready = client.auth.getSession().then(({data}) => showUser(data.session?.user || null)).catch(() => showUser(null));
  client.auth.onAuthStateChange((_event, session) => showUser(session?.user || null));
  form.onsubmit = async event => {
   event.preventDefault();
