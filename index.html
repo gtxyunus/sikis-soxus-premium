@@ -444,6 +444,20 @@ nav.fixed{bottom:max(12px,env(safe-area-inset-bottom))}
  font-size:21px;
  font-weight:900;
 }
+
+#dealModalContent{min-height:90dvh;max-height:96dvh;display:flex;flex-direction:column;padding:16px 10px;background:linear-gradient(155deg,#ff7864,#f43549 35%,#ff7918)}
+#dealModalContent::before{content:"DEMO — NOT VALID FOR PAYMENT";display:block;text-align:center;color:white;font-size:12px;font-weight:800;padding:8px}
+#dealModalContent>h2{padding:16px 0 30px}
+#dealModalContent .relative.h-36{height:clamp(220px,34dvh,380px)}
+#modalRestTitle{font-size:26px;line-height:1.15}
+#modalRestCat{font-size:14px;margin-top:10px}
+#modalDealTitle{font-size:24px}
+#modalDealDesc{font-size:16px;line-height:1.5}
+#swipeTrack{height:76px}
+#swipeThumb{width:64px;height:64px;background:#00ef55;color:#173524;font-size:32px}
+#swipeTrack>span{padding-left:65px;color:#242424}
+#dealModalContent>button:last-child{margin-top:auto;padding:30px 0;font-size:20px}
+@media(min-width:768px){#dealModalContent{min-height:80dvh;max-width:480px}}
 </style>
 </head>
 
@@ -657,7 +671,7 @@ Redeemed <span id="redeemedCount">0</span>
 <!-- SUCCESS TOAST -->
 <div id="ratingToast" class="rating-toast hidden">
 <span class="rating-toast-check">✓</span>
-<span>Successfully applied</span>
+<span>Demo redemption completed</span>
 </div>
 
 <!-- THANK YOU SCREEN -->
@@ -949,12 +963,10 @@ function renderRestaurants(){
 }
 
 function getRenewalDays(deal){
- return deal?.renewalDays??14;
+ return 0;
 }
 function getRenewalLabel(deal){
- return deal?.onceOnly
-  ?"Only once redeemable"
-  :"Renews every "+getRenewalDays(deal)+" days";
+ return "Available anytime in demo";
 }
 
 function showRestaurant(key){
@@ -1006,22 +1018,6 @@ function bookDeal(key,index){
   alert("This deal is already booked.");
   showMyDeals();
   return;
- }
-
- const lastUsed=dealHistory
-  .filter(x=>x.restaurantKey===key&&x.dealIndex===index&&x.status==="redeemed")
-  .sort((a,b)=>b.redeemedAt-a.redeemedAt)[0];
-
- if(lastUsed){
-  if(d.onceOnly){
-   alert("This demo deal can only be redeemed once.");
-   return;
-  }
-  const remaining=getRenewalDays(d)*86400000-(Date.now()-lastUsed.redeemedAt);
-  if(remaining>0){
-   alert("This demo deal renews in "+Math.ceil(remaining/86400000)+" days.");
-   return;
-  }
  }
 
  dealHistory.unshift({
@@ -1095,7 +1091,7 @@ function renderMyDeals(){
     </div>
 
     <div class="bg-white rounded-3xl border border-gray-200 p-5 shadow-sm">
-     <h3 class="text-2xl font-black">${escapeHTML(d.title)}</h3>
+     <p class="text-xs font-bold text-orange-600">DEMO — NOT VALID FOR PAYMENT</p><h3 class="text-2xl font-black">${escapeHTML(d.title)}</h3>
      <p class="text-gray-500 mt-3 leading-relaxed">${escapeHTML(d.desc)}</p>
      <div class="mt-4 border-t">
       ${item.status==="booked"?`
@@ -1109,7 +1105,7 @@ function renderMyDeals(){
        <p class="py-3 border-b font-semibold">🎁 ${escapeHTML(d.save)}</p>
        <p class="py-3 border-b font-semibold">▣ Redeemed on ${formatDate(item.redeemedAt)} ⏱ ${formatTime(item.redeemedAt)}</p>
        <button disabled class="w-full bg-gray-200 text-gray-600 rounded-full py-4 mt-4 font-black">
-        ${d.onceOnly?"Already redeemed — one-time deal":daysLeft>0?"Book again in "+daysLeft+" days":"Available to book again"}
+        Available to book again
        </button>
       `}
      </div>
