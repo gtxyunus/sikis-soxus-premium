@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Sikis Sokus">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#17171d">
@@ -527,6 +527,12 @@ nav.fixed{bottom:max(12px,env(safe-area-inset-bottom))}
 }
 body.account-locked > :not(#accountDialog) { visibility: hidden; }
 body.account-locked { overflow: hidden; }
+#homeHeader{padding-top:calc(env(safe-area-inset-top,0px) + 24px)}
+.glass-nav{width:min(94%,430px);border-radius:30px;background:linear-gradient(150deg,#fffffff0,#edf6fae0 65%,#e6f1f7d9);border-color:#b7cad273;box-shadow:0 6px 20px #16394b25,inset 0 1px 1px #fff}
+.glass-nav .nav-btn{color:#1b2834;min-height:52px;padding:6px 2px;font-size:12px}
+.glass-nav .nav-btn.active{color:#b64222;background:#e1e9ed;box-shadow:none}
+.glass-nav .nav-icon{width:23px;height:23px;stroke-width:2}
+.glass-nav .nav-static{cursor:default;color:#495862}
 </style>
 </head>
 
@@ -534,7 +540,7 @@ body.account-locked { overflow: hidden; }
 
 <!-- HOME -->
 <div id="homeView" class="pb-28">
-<header class="bg-gradient-to-br from-slate-900 via-zinc-900 to-neutral-900 text-white px-6 pt-10 pb-9 rounded-b-[36px] shadow-xl">
+<header id="homeHeader" class="bg-gradient-to-br from-slate-900 via-zinc-900 to-neutral-900 text-white px-6 pt-10 pb-9 rounded-b-[36px] shadow-xl">
 <div class="max-w-4xl mx-auto">
 <div class="flex justify-between items-center mb-7">
 <span class="bg-white/10 border border-white/10 text-orange-400 rounded-full px-4 py-2 text-sm font-bold">🟠 Brno Hub</span>
@@ -560,7 +566,7 @@ body.account-locked { overflow: hidden; }
 <span class="text-amber-400">★★★★★</span>
 <span id="restRating"></span> •
 <span id="restDistance"></span> •
-<span class="text-green-400">Open</span>
+<span>See hours below</span>
 </p>
 </div>
 </div>
@@ -646,6 +652,7 @@ Redeemed <span id="redeemedCount">0</span>
 <button id="navExplore" onclick="showHome()" class="nav-btn active flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.7 8.3-2.3 5.1-5.1 2.3 2.3-5.1z"/></svg>Explore
 </button>
+<div class="nav-btn nav-static flex-1 rounded-full flex flex-col items-center justify-center text-xs font-bold"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v16l-6-4-6 4z"/><path d="M9 8h6"/></svg>Lists</div>
 <button id="navDeals" onclick="showMyDeals()" class="nav-btn flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
 <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 11.5 11 4h6l3 3v6l-7.5 7.5z"/><circle cx="15.7" cy="8.3" r=".9"/></svg>My deals
 </button>
@@ -780,7 +787,8 @@ const restaurants = {
   category:"Burger • Fast Food",
   rating:"4.8 (1601)",
   distance:"📍 5.4 km",
-  hours:"07:00 - 23:00",
+  hours:"Dine-in hours unconfirmed · Bolt Food lists ordering 07:00–01:30 next day",
+  dealHours:"Check current deal hours in the official offer",
   address:"Nádražní 654/10, 602 00 Brno",
   banner:"https://www.tastetown.app/_next/image?url=https%3A%2F%2Fs3.eu-central-1.amazonaws.com%2Ftt-apps-assets%2Fimages%2FBranch%2F2000-2999%2F2000%2F45ddf692-e4ba-4c35-8a67-d9452beac00e.jpg&w=1200&q=75",
   deals:[
@@ -793,7 +801,8 @@ const restaurants = {
   category:"Burger • Fast Food",
   rating:"4.8 (1410)",
   distance:"📍 4.5 km",
-  hours:"08:30 - 23:59",
+  hours:"Dine-in hours unconfirmed · TasteTown lists deal times below",
+  dealHours:"08:30–23:59 daily · 00:01–01:00 daily · Sat 01:00–03:00",
   address:"Česká, 602 00 Brno",
   banner:"https://www.tastetown.app/_next/image?url=https%3A%2F%2Fs3.eu-central-1.amazonaws.com%2Ftt-apps-assets%2Fimages%2FBranch%2F2000-2999%2F2000%2Fddd4b088-d6a4-4626-b745-0deffa88307a.jpg&w=1200&q=75",
   deals:[
@@ -806,12 +815,13 @@ const restaurants = {
   category:"Kebab • Oriental",
   rating:"4.9 (1557)",
   distance:"📍 5.1 km",
-  hours:"08:30 - 23:59",
+  hours:"Daily 09:00–midnight · After midnight: Mon to 02:00, Tue–Thu to 03:00, Fri to 04:00, Sat–Sun to 06:00",
+  dealHours:"09:00–23:59 daily",
   address:"Divadelní, 602 00 Brno",
   banner:"https://www.tastetown.app/_next/image?url=https%3A%2F%2Fs3.eu-central-1.amazonaws.com%2Ftt-apps-assets%2Fimages%2FBranch%2F1000-1999%2F1690%2F568efdfd-58c1-4176-acd0-a29988fff8e5.jpg&w=1920&q=75",
   deals:[
    {title:"Main Dish 1+1",desc:"Order two main dishes of your choice, and you will get the cheaper or the equally priced one for free.",save:"Save up to 165 Kč"},
-   {title:"Discount 20%",desc:"You will get a 20% discount on the entire bill.",save:"Save up to 999 Kč"}
+   {title:"Discount 30%",desc:"Get 30% off your total bill.",save:"Save up to 999 Kč"}
   ]
  },
  "roj-panska": {
@@ -819,12 +829,13 @@ const restaurants = {
   category:"Kebab • Oriental",
   rating:"4.8 (229)",
   distance:"📍 5.0 km",
-  hours:"08:30 - 23:59",
+  hours:"Opens daily at 10:00 · Closes Mon–Tue and Sun at midnight, Wed–Thu at 02:00, Fri–Sat at 05:00 next day",
+  dealHours:"10:00–23:59 daily",
   address:"Panská, 602 00 Brno",
   banner:"https://www.tastetown.app/_next/image?url=https%3A%2F%2Fs3.eu-central-1.amazonaws.com%2Ftt-apps-assets%2Fimages%2FBranch%2F2000-2999%2F2580%2F827b0aac-149a-4106-a319-14ba2e72fb92.jpg&w=1920&q=75",
   deals:[
    {title:"Main Dish 1+1",desc:"Order two main dishes of your choice, and you will get the cheaper or the equally priced one for free.",save:"Save up to 165 Kč"},
-   {title:"Discount 20%",desc:"You will get a 20% discount on the entire bill.",save:"Save up to 999 Kč"}
+   {title:"Discount 30%",desc:"Get 30% off your total bill.",save:"Save up to 999 Kč"}
   ]
  },
  "pixie-matcha-bar": {
@@ -832,7 +843,8 @@ const restaurants = {
   category:"HOT Deal • Coffee • Matcha • Desserts",
   rating:"3.0 (1)",
   distance:"📍 5.0 km",
-  hours:"08:00 - 18:00",
+  hours:"Dine-in hours unconfirmed · Check with the café",
+  dealHours:"Check current deal hours in the official offer",
   address:"Průchodní 3, 602 00 Brno",
   banner:"https://s3.eu-central-1.amazonaws.com/tt-apps-assets/images/Branch/2000-2999/2678/4e1659d7-ac26-4747-8392-27c0373b7515.png",
   deals:[
@@ -858,7 +870,7 @@ const restaurants = {
   category:"HOT Deal • Asian • Bowls • Desserts",
   rating:"5.0 (109)",
   distance:"📍 5.0 km",
-  hours:"10:00 - 19:00",
+  hours:"Mon–Sat 10:00–19:00 · Sun 10:00–18:00",
   address:"Jánská 448/10, 602 00 Brno",
   banner:"https://s3.eu-central-1.amazonaws.com/tt-apps-assets/images/Branch/2000-2999/2920/0ac5044f-86a1-446b-b0a3-8ad9fe9b6368.jpg",
   deals:[
@@ -884,7 +896,7 @@ const restaurants = {
   category:"Pizza • Fast Food",
   rating:"4.8 (1211)",
   distance:"📍 5.8 km",
-  hours:"09:00 - 21:00",
+  hours:"Mon–Sat 09:00–21:00 · Sun 10:00–21:00",
   address:"Galerie Vaňkovka, Ve Vaňkovce 1, 602 00 Brno",
   banner:"https://www.tastetown.app/_next/image?url=https%3A%2F%2Fs3.eu-central-1.amazonaws.com%2Ftt-apps-assets%2Fimages%2FBranch%2F1000-1999%2F1723%2F60b02e78-9767-468c-9fee-7f9fd9ee39ad.jpg&w=1080&q=75",
   deals:[
@@ -1031,7 +1043,7 @@ function renderRestaurants(){
   </div>
   <div class="p-4 flex justify-between text-xs font-semibold">
    <span class="text-amber-500">★★★★★ ${escapeHTML(r.rating)}</span>
-   <span class="text-green-600">Open</span>
+
   </div>
  </div>`).join("");
 }
@@ -1045,7 +1057,7 @@ function showRestaurant(key){
  $("restCategory").textContent=r.category;
  $("restRating").textContent=r.rating;
  $("restDistance").textContent=r.distance;
- $("restHours").textContent="Open • "+r.hours;
+ $("restHours").textContent=r.dealHours ? r.hours + " · Deal hours: " + r.dealHours : r.hours;
  $("restAddress").textContent=r.address;
  $("avgRatingNum").textContent=r.rating.split(" ")[0];
  $("totalRatingsCount").textContent=
@@ -1144,7 +1156,7 @@ function renderMyDeals(){
     <div class="absolute bottom-5 left-5 text-white right-5">
      <h2 class="text-3xl font-black">${escapeHTML(r.name)}</h2>
      <p class="font-semibold mt-2">${escapeHTML(r.category)}</p>
-     <p class="text-sm mt-2">☆ ☆ ☆ ☆ ☆ ${escapeHTML(r.rating)} | ${escapeHTML(r.distance)} | Open</p>
+     <p class="text-sm mt-2">☆ ☆ ☆ ☆ ☆ ${escapeHTML(r.rating)} | ${escapeHTML(r.distance)}</p>
     </div>
    </div>
    <div class="p-4 bg-[#f3f4f9]">
@@ -1162,7 +1174,7 @@ function renderMyDeals(){
        <p class="py-3 border-b font-semibold">🎁 ${escapeHTML(d.save)}</p>
 
        <p class="py-3 border-b font-semibold">📍 Eat on-site or takeaway</p>
-       <p class="py-3 border-b font-semibold">▣ Redeem ${formatDate(item.bookedAt)} ⏱ ${escapeHTML(r.hours)}</p>
+       <p class="py-3 border-b font-semibold">▣ Redeem ${formatDate(item.bookedAt)} ⏱ ${escapeHTML(r.dealHours || r.hours)}</p>
        <button onclick='openDealModal(${id})' class="w-full bg-[#00ef55] text-black rounded-full py-4 mt-4 text-xl font-black">Redeem deal</button>
       `:`
 
@@ -1231,7 +1243,7 @@ function openDealModal(id){
  $("modalRestCat").textContent=r.category;
  $("modalDealTitle").textContent=d.title;
  $("modalDealDesc").textContent=d.desc;
- $("modalHours").textContent=r.hours;
+ $("modalHours").textContent=r.dealHours || r.hours;
  $("currentDateBadge").textContent="📅 "+formatDate(Date.now());
  $("dealModal").classList.remove("hidden");
  resetSwipe();
