@@ -1553,8 +1553,7 @@ renderRestaurants();
   <label id="accountNameRow" hidden>Display name<input name="displayName" maxlength="80" autocomplete="nickname" class="block w-full rounded-xl border p-3"></label>
   <label class="block">Email<input name="email" type="email" autocomplete="email" required class="block w-full rounded-xl border p-3"></label>
   <label class="block">Password<input name="password" type="password" autocomplete="current-password" required class="block w-full rounded-xl border p-3"></label>
-  <p class="text-sm text-gray-600">The site admin can see your name, email, sign-in times, device type and completed demo deal swipes.</p>
-  <label id="accountLocationRow" class="flex items-start gap-2 text-sm"><input name="location" type="checkbox" class="mt-1"> Share my device coordinates and their accuracy with the site admin for this sign-in. Optional.</label>
+  <details class="text-sm text-gray-600"><summary class="cursor-pointer">Privacy</summary><p class="mt-2">The site admin can see your name, email, sign-in times, device type and completed demo deal swipes.</p></details>
   <button id="accountSubmit" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Sign in</button>
   <button id="accountMode" type="button" class="px-3 py-2 font-bold text-orange-700">Create an account</button>
  </form>
@@ -1590,7 +1589,6 @@ renderRestaurants();
   registering = !registering;
   title.textContent = registering ? 'Create an account' : 'Account';
   byId('accountNameRow').hidden = !registering;
-  byId('accountLocationRow').classList.toggle('hidden', registering);
   form.displayName.required = registering;
   form.password.minLength = registering ? 8 : 0;
   form.password.autocomplete = registering ? 'new-password' : 'current-password';
@@ -1603,9 +1601,8 @@ renderRestaurants();
  client.auth.onAuthStateChange((_event, session) => showUser(session?.user || null));
  form.onsubmit = async event => {
   event.preventDefault();
-  const {email, password, displayName, location} = form.elements;
+  const {email, password, displayName} = form.elements;
   const credentials = {email:email.value.trim(),password:password.value};
-  const wantsLocation = !registering && location.checked;
   button.disabled = true;
   status('Please wait…');
   try {
@@ -1615,15 +1612,6 @@ renderRestaurants();
    if (result.error) throw result.error;
    password.value = '';
    if (!result.data.session) { status('Check your email to confirm your account.'); return; }
-   if (wantsLocation && navigator.geolocation) {
-    const position = await new Promise(resolve => navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {enableHighAccuracy:true,timeout:10000,maximumAge:0}));
-    if (position) {
-     const {latitude,longitude,accuracy} = position.coords;
-     const {error} = await client.rpc('sikis_share_location',{lat:latitude,lon:longitude,meters:accuracy});
-     status(error ? 'Signed in. Location could not be saved.' : 'Signed in. Location shared.');
-    } else status('Signed in. Location was unavailable.');
-   }
-   location.checked = false;
   } catch (error) { status(error.message || 'Account request failed.'); }
   finally { button.disabled = false; }
  };
@@ -1645,7 +1633,7 @@ renderRestaurants();
    const heading = document.createElement('strong');
    heading.textContent = (row.display_name || row.email) + ' · ' + row.event;
    card.append(heading);
-   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.event === 'Sign-in' && 'Location: ' + (row.location || 'Not shared'), row.last_deal && 'Last demo deal: ' + row.last_deal]) {
+   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.last_deal && 'Last demo deal: ' + row.last_deal]) {
     if (!value) continue;
     const line = document.createElement('div');
     line.textContent = value;
