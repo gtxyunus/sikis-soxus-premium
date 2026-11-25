@@ -634,8 +634,8 @@ Redeemed <span id="redeemedCount">0</span>
 
 <!-- BOTTOM NAVIGATION -->
 <nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-30 bg-white/95 border border-gray-200 shadow-xl rounded-full p-1 flex w-[min(92%,390px)]">
-<button id="navAccount" onclick="showHome()" class="nav-btn flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
-<span class="text-2xl">◉</span>Home
+<button id="navAccount" onclick="openSikisAccount()" class="nav-btn flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
+<span class="text-2xl">◉</span>Account
 </button>
 <button id="navExplore" onclick="showHome()" class="nav-btn active flex-1 py-3 rounded-full flex flex-col items-center text-xs font-bold">
 <span class="text-2xl">◈</span>Explore
@@ -1287,9 +1287,22 @@ function parseMaxSavings(deal){
  return matches?Number(matches[0].replace(/\s/g,"")):90;
 }
 
-function triggerSuccess(){
+let savingSwipe = false;
+async function triggerSuccess(){
  const item=dealHistory.find(x=>x.id===selectedDealId&&x.status==="booked");
- if(!item)return;
+ if(!item || savingSwipe)return;
+ const restaurant = restaurants[item.restaurantKey];
+ const deal = restaurant?.deals[item.dealIndex];
+ if (!deal) return;
+ savingSwipe = true;
+ try {
+  if (!window.recordSikisSwipe) throw new Error('Accounts unavailable');
+  if (!await window.recordSikisSwipe(item.id, restaurant.name + ' — ' + deal.title)) { resetSwipe(); return; }
+ } catch (error) {
+  resetSwipe();
+  alert('The swipe could not be saved. Please try again.');
+  return;
+ } finally { savingSwipe = false; }
  item.status="redeemed";
  item.redeemedAt=Date.now();
  saveHistory();
@@ -1532,6 +1545,123 @@ function completeRedemption(){
 }
 
 renderRestaurants();
+</script>
+<dialog id="accountDialog" class="m-auto w-[min(94%,45rem)] max-h-[85dvh] overflow-auto rounded-3xl p-6 shadow-2xl backdrop:bg-black/50" aria-labelledby="accountTitle">
+ <div class="flex items-center justify-between"><h2 id="accountTitle" class="text-2xl font-black">Account</h2><button id="accountClose" type="button" class="rounded-full bg-gray-100 px-4 py-2">Close</button></div>
+ <p id="accountStatus" class="my-3 text-sm" role="status"></p>
+ <form id="accountForm" class="space-y-3">
+  <label id="accountNameRow" hidden>Display name<input name="displayName" maxlength="80" autocomplete="nickname" class="block w-full rounded-xl border p-3"></label>
+  <label class="block">Email<input name="email" type="email" autocomplete="email" required class="block w-full rounded-xl border p-3"></label>
+  <label class="block">Password<input name="password" type="password" autocomplete="current-password" required class="block w-full rounded-xl border p-3"></label>
+  <p class="text-sm text-gray-600">The site admin can see your name, email, sign-in times, device type and completed demo deal swipes.</p>
+  <label id="accountLocationRow" class="flex items-start gap-2 text-sm"><input name="location" type="checkbox" class="mt-1"> Share my device coordinates and their accuracy with the site admin for this sign-in. Optional.</label>
+  <button id="accountSubmit" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Sign in</button>
+  <button id="accountMode" type="button" class="px-3 py-2 font-bold text-orange-700">Create an account</button>
+ </form>
+ <section id="accountSession" hidden><button id="accountSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button><button id="accountAdmin" class="ml-2 rounded-full bg-orange-600 px-5 py-3 font-bold text-white" hidden>Admin history</button></section>
+ <section id="accountHistory" class="mt-4 space-y-2" aria-label="Recent site activity" hidden></section>
+</dialog>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(() => {
+ const byId = id => document.getElementById(id);
+ const dialog = byId('accountDialog');
+ const form = byId('accountForm');
+ const status = message => { byId('accountStatus').textContent = message; };
+ const client = window.supabase?.createClient('https://iidhodgcrrivooyyjdye.supabase.co', 'sb_publishable_ejzvv2hk-xaz2eOD2dwbqA_uAd5uV58');
+ const adminEmail = 'yunusabdulsalamov12@gmail.com';
+ let registering = false;
+ let activeUser = null;
+ const history = byId('accountHistory');
+ const title = byId('accountTitle');
+ const button = byId('accountSubmit');
+ const date = new Intl.DateTimeFormat('en-GB', {dateStyle:'medium',timeStyle:'medium',timeZone:'Europe/Prague'});
+ function showUser(user) {
+  if (activeUser?.id !== user?.id) { history.replaceChildren(); history.hidden = true; }
+  activeUser = user;
+  form.hidden = Boolean(user);
+  byId('accountSession').hidden = !user;
+  byId('accountAdmin').hidden = user?.email?.toLowerCase() !== adminEmail;
+  status(user ? 'Signed in as ' + (user.user_metadata?.display_name || user.email) : '');
+ }
+ window.openSikisAccount = () => { if (!dialog.open) dialog.showModal(); if (!client) status('Accounts are temporarily unavailable.'); };
+ byId('accountClose').onclick = () => dialog.close();
+ byId('accountMode').onclick = () => {
+  registering = !registering;
+  title.textContent = registering ? 'Create an account' : 'Account';
+  byId('accountNameRow').hidden = !registering;
+  byId('accountLocationRow').classList.toggle('hidden', registering);
+  form.displayName.required = registering;
+  form.password.minLength = registering ? 8 : 0;
+  form.password.autocomplete = registering ? 'new-password' : 'current-password';
+  button.textContent = registering ? 'Create account' : 'Sign in';
+  byId('accountMode').textContent = registering ? 'Back to sign in' : 'Create an account';
+  status('');
+ };
+ if (!client) return;
+ let ready = client.auth.getSession().then(({data}) => showUser(data.session?.user || null));
+ client.auth.onAuthStateChange((_event, session) => showUser(session?.user || null));
+ form.onsubmit = async event => {
+  event.preventDefault();
+  const {email, password, displayName, location} = form.elements;
+  const credentials = {email:email.value.trim(),password:password.value};
+  const wantsLocation = !registering && location.checked;
+  button.disabled = true;
+  status('Please wait…');
+  try {
+   const result = registering
+    ? await client.auth.signUp({...credentials, options:{data:{display_name:displayName.value.trim()},emailRedirectTo:'https://gtxyunus.github.io/sikis-soxus-premium/'}})
+    : await client.auth.signInWithPassword(credentials);
+   if (result.error) throw result.error;
+   password.value = '';
+   if (!result.data.session) { status('Check your email to confirm your account.'); return; }
+   if (wantsLocation && navigator.geolocation) {
+    const position = await new Promise(resolve => navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), {enableHighAccuracy:true,timeout:10000,maximumAge:0}));
+    if (position) {
+     const {latitude,longitude,accuracy} = position.coords;
+     const {error} = await client.rpc('sikis_share_location',{lat:latitude,lon:longitude,meters:accuracy});
+     status(error ? 'Signed in. Location could not be saved.' : 'Signed in. Location shared.');
+    } else status('Signed in. Location was unavailable.');
+   }
+   location.checked = false;
+  } catch (error) { status(error.message || 'Account request failed.'); }
+  finally { button.disabled = false; }
+ };
+ byId('accountSignOut').onclick = async () => {
+  const {error} = await client.auth.signOut();
+  if (error) status(error.message);
+ };
+ byId('accountAdmin').onclick = async () => {
+  const userId = activeUser?.id;
+  history.replaceChildren();
+  history.hidden = false;
+  history.textContent = 'Loading activity…';
+  const {data,error} = await client.rpc('sikis_admin_history');
+  if (activeUser?.id !== userId) return;
+  history.textContent = error ? 'History unavailable. ' + error.message : data.length ? 'Recent activity · Prague time' : 'No activity yet.';
+  for (const row of data || []) {
+   const card = document.createElement('article');
+   card.className = 'rounded-xl border bg-gray-50 p-3 text-sm';
+   const heading = document.createElement('strong');
+   heading.textContent = (row.display_name || row.email) + ' · ' + row.event;
+   card.append(heading);
+   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.event === 'Sign-in' && 'Location: ' + (row.location || 'Not shared'), row.last_deal && 'Last demo deal: ' + row.last_deal]) {
+    if (!value) continue;
+    const line = document.createElement('div');
+    line.textContent = value;
+    card.append(line);
+   }
+   history.append(card);
+  }
+ };
+ window.recordSikisSwipe = async (booking, label) => {
+  await ready;
+  if (!activeUser) { window.openSikisAccount(); status('Sign in to redeem a demo deal.'); return false; }
+  const {error} = await client.rpc('sikis_record_swipe',{booking,label});
+  if (error) throw error;
+  return true;
+ };
+})();
 </script>
 </body>
 </html>
