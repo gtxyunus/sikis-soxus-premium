@@ -1548,7 +1548,7 @@ function completeRedemption(){
 
 renderRestaurants();
 </script>
-<dialog id="accountDialog" class="m-auto w-[min(94%,45rem)] max-h-[85dvh] overflow-auto rounded-3xl p-6 shadow-2xl backdrop:bg-black/50" aria-labelledby="accountTitle">
+<dialog id="accountDialog" closedby="none" class="m-auto w-[min(94%,45rem)] max-h-[85dvh] overflow-auto rounded-3xl p-6 shadow-2xl backdrop:bg-black/50" aria-labelledby="accountTitle">
  <div class="flex items-center justify-between"><h2 id="accountTitle" class="text-2xl font-black">Account</h2><button id="accountClose" type="button" class="rounded-full bg-gray-100 px-4 py-2">Close</button></div>
  <p id="accountStatus" class="my-3 text-sm" role="status"></p>
  <form id="accountForm" class="space-y-3">
@@ -1583,6 +1583,7 @@ renderRestaurants();
   const wasLocked = document.body.classList.contains('account-locked');
   document.body.classList.toggle('account-locked', !user);
   byId('accountClose').hidden = !user;
+  dialog.setAttribute('closedby', user ? 'closerequest' : 'none');
   if (user && wasLocked && dialog.open) dialog.close();
   if (!user && !dialog.open) dialog.showModal();
   form.hidden = Boolean(user);
@@ -1593,6 +1594,7 @@ renderRestaurants();
  window.openSikisAccount = () => { if (!dialog.open) dialog.showModal(); if (!client) status('Accounts are temporarily unavailable.'); };
  byId('accountClose').onclick = () => { if (activeUser) dialog.close(); };
  dialog.addEventListener('cancel', event => { if (!activeUser) event.preventDefault(); });
+ dialog.addEventListener('close', () => { if (!activeUser && !dialog.open) dialog.showModal(); });
  byId('accountMode').onclick = () => {
   registering = !registering;
   title.textContent = registering ? 'Create an account' : 'Account';
