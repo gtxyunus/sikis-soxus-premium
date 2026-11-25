@@ -1548,12 +1548,11 @@ function completeRedemption(){
 
 renderRestaurants();
 </script>
- <button type="button" id="stopLocation" class="fixed left-3 top-[max(12px,env(safe-area-inset-top))] z-[100] rounded-full bg-gray-900 px-4 py-2 text-sm font-bold text-white" hidden>Live location is on · Stop</button>
 <dialog id="accountDialog" closedby="none" class="m-auto w-[min(94%,45rem)] max-h-[85dvh] overflow-auto rounded-3xl p-6 shadow-2xl backdrop:bg-black/50" aria-labelledby="accountTitle">
  <div class="flex items-center justify-between"><h2 id="accountTitle" class="text-2xl font-black">Account</h2><button id="accountClose" type="button" class="rounded-full bg-gray-100 px-4 py-2">Close</button></div>
  <p id="accountStatus" class="my-3 text-sm" role="status"></p>
  <section id="locationGate" class="space-y-3" hidden>
-  <p>To browse Sikis Sokus, allow live location sharing. While this app is visible, Supabase stores your latest precise coordinates, accuracy, and recording time for the site admin to see. Updates are sent at most every 10 seconds when a fresh reading is available.</p>
+  <p>To browse Sikis Sokus, allow live location sharing. While this app is visible, Supabase stores your latest precise coordinates, accuracy, and recording time for the site admin to see. If the admin opens a reading in Google Maps, Google receives those coordinates. Updates are sent at most every 10 seconds when a fresh reading is available.</p>
   <button type="button" id="startLocation" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Share live location</button>
   <button type="button" id="locationSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button>
  </section>
@@ -1563,6 +1562,7 @@ renderRestaurants();
   <button id="passkeySkip" type="button" class="px-3 py-2 font-bold text-orange-700">Skip for now</button>
  </section>
  <button id="passkeySignIn" type="button" class="mb-4 rounded-full border px-5 py-3 font-bold" hidden>Sign in with Face ID or passkey</button>
+ <button id="cancelAutoPasskey" type="button" class="mb-4 rounded-full border px-5 py-3" hidden>Use another sign-in method</button>
  <form id="accountForm" class="space-y-3">
   <label id="accountNameRow" hidden>Display name<input name="displayName" maxlength="80" autocomplete="nickname" class="block w-full rounded-xl border p-3"></label>
   <label class="block">Email<input name="email" type="email" autocomplete="email" required class="block w-full rounded-xl border p-3"></label>
@@ -1570,7 +1570,7 @@ renderRestaurants();
   <button id="accountSubmit" class="rounded-full bg-orange-600 px-5 py-3 font-bold text-white">Sign in</button>
   <button id="accountMode" type="button" class="px-3 py-2 font-bold text-orange-700">Create an account</button>
  </form>
- <section id="accountSession" hidden><button id="passkeyManage" type="button" class="mr-2 rounded-full border px-5 py-3 font-bold" hidden>Set up Face ID or passkey</button><button id="accountSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button><button id="accountAdmin" class="ml-2 rounded-full bg-orange-600 px-5 py-3 font-bold text-white" hidden>Admin history</button></section>
+ <section id="accountSession" hidden><button type="button" id="stopLocation" class="m-1 rounded-full border px-4 py-2 text-sm font-bold" hidden>Live location is on · Stop sharing</button><button id="passkeyManage" type="button" class="mr-2 rounded-full border px-5 py-3 font-bold" hidden>Set up Face ID or passkey</button><button id="accountSignOut" class="rounded-full bg-gray-100 px-5 py-3">Sign out</button><button id="accountAdmin" class="ml-2 rounded-full bg-orange-600 px-5 py-3 font-bold text-white" hidden>Admin history</button></section>
  <section id="accountHistory" class="mt-4 space-y-2" aria-label="Recent site activity" hidden></section>
 </dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1586,6 +1586,9 @@ renderRestaurants();
  let activeUser = null;
  let unlockedUserId = null;
  let ceremonyInProgress = false;
+ let attemptedAutoPasskey = false;
+ let autoPasskeyRunning = false;
+ let autoPasskeyController = null;
  let showSetup = false;
  let locationWatch = null;
  let locationTimer = null;
@@ -1679,9 +1682,10 @@ renderRestaurants();
   byId('stopLocation').hidden = !locationSaved || !activeUser;
   if (needsLocation) byId('stopLocation').hidden = true;
   byId('passkeySetup').hidden = !showSetup;
-  byId('passkeySignIn').hidden = !supportsPasskeys || !locked || showSetup || needsLocation || registering;
+  byId('cancelAutoPasskey').hidden = !autoPasskeyRunning;
+  byId('passkeySignIn').hidden = autoPasskeyRunning || !supportsPasskeys || !locked || showSetup || needsLocation || registering;
   byId('passkeySignIn').textContent = needsUnlock ? 'Unlock with Face ID or passkey' : 'Sign in with Face ID or passkey';
-  form.hidden = showSetup || needsLocation || !locked;
+  form.hidden = autoPasskeyRunning || showSetup || needsLocation || !locked;
   byId('accountNameRow').hidden = !registering;
   form.displayName.required = registering;
   form.password.minLength = registering ? 8 : 0;
@@ -1717,6 +1721,7 @@ renderRestaurants();
  }
  function lockHomeScreenApp() {
   if (!homeScreenApp || !supportsPasskeys || ceremonyInProgress || !activeUser || passkeyPreference(activeUser) !== 'enabled') return;
+  if (unlockedUserId !== null) attemptedAutoPasskey = false;
   unlockedUserId = null;
   history.replaceChildren();
   history.hidden = true;
@@ -1743,10 +1748,12 @@ renderRestaurants();
   } else {
    renderAccount();
    if (locationApproved) startLocation();
+   tryAutomaticPasskey();
   }
  });
  window.addEventListener('pagehide', () => { pauseLocation(); lockHomeScreenApp(); });
- window.addEventListener('pageshow', () => { renderAccount(); if (locationApproved) startLocation(); });
+ window.addEventListener('pageshow', () => { renderAccount(); if (locationApproved) startLocation(); tryAutomaticPasskey(); });
+ void ready.then(tryAutomaticPasskey);
  byId('startLocation').onclick = startLocation;
  byId('locationSignOut').onclick = () => byId('accountSignOut').click();
  byId('stopLocation').onclick = () => { pauseLocation(true); renderAccount(); status('Live location sharing stopped.'); };
@@ -1777,12 +1784,22 @@ renderRestaurants();
   } catch (error) { status(error.message || 'Could not add a passkey.'); }
   finally { ceremonyInProgress = false; }
  };
- byId('passkeySignIn').onclick = async () => {
+ function tryAutomaticPasskey() {
+  if (document.hidden || !homeScreenApp || !supportsPasskeys || !activeUser || showSetup || unlockedUserId === activeUser.id || passkeyPreference(activeUser) !== 'enabled' || attemptedAutoPasskey || ceremonyInProgress) return;
+  attemptedAutoPasskey = true;
+  void signInWithPasskey(true);
+ }
+ byId('cancelAutoPasskey').onclick = () => autoPasskeyController?.abort();
+ byId('passkeySignIn').onclick = () => void signInWithPasskey(false);
+ async function signInWithPasskey(automatic) {
   if (ceremonyInProgress) return;
   ceremonyInProgress = true;
   status('Follow the prompt on your device.');
   try {
-   const {data,error} = await client.auth.signInWithPasskey();
+   autoPasskeyRunning = automatic;
+   autoPasskeyController = automatic ? new AbortController() : null;
+   renderAccount();
+   const {data,error} = await client.auth.signInWithPasskey(autoPasskeyController ? {options:{signal:autoPasskeyController.signal}} : undefined);
    if (error) throw error;
    if (!data.user) throw new Error('Passkey sign-in did not return an account.');
    savePasskeyPreference(data.user, 'enabled');
@@ -1790,8 +1807,13 @@ renderRestaurants();
    unlockAccount(data.user);
    if (locationApproved) startLocation();
   } catch (error) { status(error.message || 'Could not sign in with a passkey. Use your password to continue.'); }
-  finally { ceremonyInProgress = false; }
- };
+  finally {
+   ceremonyInProgress = false;
+   autoPasskeyRunning = false;
+   autoPasskeyController = null;
+   renderAccount();
+  }
+ }
  form.onsubmit = async event => {
   event.preventDefault();
   if (ceremonyInProgress) return;
@@ -1837,11 +1859,23 @@ renderRestaurants();
    const heading = document.createElement('strong');
    heading.textContent = (row.display_name || row.email) + ' · ' + row.event;
    card.append(heading);
-   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.location && 'Location: ' + row.location, row.last_deal && 'Last demo deal: ' + row.last_deal]) {
+   for (const value of [row.email, date.format(new Date(row.event_time)), row.device && 'Device: ' + row.device, row.last_deal && 'Last demo deal: ' + row.last_deal]) {
     if (!value) continue;
     const line = document.createElement('div');
     line.textContent = value;
     card.append(line);
+   }
+   const location = row.location?.match(/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(.*)$/);
+   if (location && Math.abs(Number(location[1])) <= 90 && Math.abs(Number(location[2])) <= 180) {
+    const map = document.createElement('button');
+    map.type = 'button';
+    map.className = 'mt-2 rounded-full border px-3 py-2 font-bold text-orange-700';
+    map.textContent = 'Open in Google Maps';
+    map.onclick = () => window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(location[1] + ',' + location[2]), '_blank', 'noopener,noreferrer');
+    card.append(map);
+    const detail = document.createElement('div');
+    detail.textContent = location[3].trim();
+    card.append(detail);
    }
    history.append(card);
   }
